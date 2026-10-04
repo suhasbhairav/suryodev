@@ -1,6 +1,6 @@
 """Analyze a Next.js project and render a narrated product-demo MP4."""
 from __future__ import annotations
-import argparse, base64, json, os, re, shutil, subprocess, sys, time
+import argparse, base64, json, os, re, shutil, subprocess, sys, time, urllib.request
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 from dotenv import load_dotenv
@@ -24,10 +24,12 @@ def snapshot(root: Path | None, limit=120000):
             except OSError: pass
     return ("PROJECT FILES:\n" + "\n".join(files) + "\n\nSELECTED CONTENT:" + "".join(content))[:limit]
 
-def discover_and_capture(base_url, run, headed=False):
+def discover_and_capture(base_url, run, headed=False, same_page_only=True):
     """Discover only same-origin hrefs from the live app and capture each route."""
     from playwright.sync_api import sync_playwright
-    origin = urlparse(base_url).netloc
+    parsed_base = urlparse(base_url)
+    origin = parsed_base.netloc
+    origin_url = f"{parsed_base.scheme}://{origin}"
     found, queue = [], [base_url]
     seen = set()
     with sync_playwright() as p:
@@ -38,6 +40,7 @@ def discover_and_capture(base_url, run, headed=False):
             target = queue.pop(0)
             parsed = urlparse(target)
             route = parsed.path or "/"
+            if not route.startswith("/"): route = "/" + route
             if parsed.netloc != origin or route in seen or any(x in route for x in ["/_next", ".png", ".jpg", ".svg", ".css", ".js"]): continue
             seen.add(route)
             try:
@@ -48,8 +51,9 @@ def discover_and_capture(base_url, run, headed=False):
                 title = page.title()
                 text = page.locator("body").inner_text(timeout=5000)[:3000]
                 found.append({"path": route, "url": page.url, "title": title, "text": text, "screenshot": shot.name})
-                for href in page.locator("a").evaluate_all("els => els.map(e => e.href)"):
-                    if urlparse(href).netloc == origin and urlparse(href).path not in seen: queue.append(href)
+                if not same_page_only:
+                    for href in page.locator("a").evaluate_all("els => els.map(e => e.href)"):
+                        if urlparse(href).netloc == origin and urlparse(href).path not in seen: queue.append(href)
             except Exception as exc:
                 print(f"Skipping route {route}: {exc}", file=sys.stderr)
         ctx.close(); browser.close()
@@ -57,7 +61,6 @@ def discover_and_capture(base_url, run, headed=False):
     return found
 
 def plan_with_gpt(text, routes, run, target_seconds=None):
-    from openai import OpenAI
     route_text = "\n\n".join(f"ROUTE {r['path']}\nTITLE: {r['title']}\nVISIBLE TEXT:\n{r['text']}" for r in routes)
     length_guidance = f"Aim for approximately {target_seconds} seconds, but prioritize a complete flow." if target_seconds else "Use as much time as the complete story needs; there is no fixed duration limit."
     prompt = f'''Analyze this product and create a professional narrated product demo.
@@ -77,9 +80,43 @@ PROJECT SOURCE SUMMARY:
     for route in routes:
         image = run / "screens" / route["screenshot"]
         content.append({"type":"input_image", "image_url":"data:image/png;base64," + base64.b64encode(image.read_bytes()).decode()})
-    r = OpenAI(timeout=60.0, max_retries=1).responses.create(model=os.getenv("OPENAI_MODEL", "gpt-5-nano"), reasoning={"effort":"minimal"}, input=[
-        {"role":"system", "content":"You produce strict JSON for a visual product-demo pipeline. Use screenshots as ground truth."}, {"role":"user", "content":content}])
-    raw = re.sub(r"^```json\s*|\s*```$", "", r.output_text.strip(), flags=re.I)
+    provider = os.getenv("AI_PROVIDER", "auto").lower()
+
+    def call_ollama():
+        ollama_content = [{"type": "text", "text": prompt}]
+        for route in routes:
+            image = run / "screens" / route["screenshot"]
+            ollama_content.append({"type": "image_url", "image_url": {"url": "data:image/png;base64," + base64.b64encode(image.read_bytes()).decode()}})
+        payload = json.dumps({
+            "model": os.getenv("OLLAMA_MODEL", "gemma4"),
+            "stream": False,
+            "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "5m"),
+            "messages": [{"role": "system", "content": "You produce strict JSON for a visual product-demo pipeline. Use screenshots as ground truth."}, {"role": "user", "content": prompt, "images": [x["image_url"]["url"].split(",", 1)[1] for x in ollama_content if x["type"] == "image_url"]}]
+        }).encode()
+        request = urllib.request.Request(os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/") + "/api/chat", data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=180) as response:
+            return json.loads(response.read().decode())["message"]["content"]
+
+    def call_openai():
+        from openai import OpenAI
+        r = OpenAI(timeout=60.0, max_retries=1).responses.create(model=os.getenv("OPENAI_MODEL", "gpt-5-nano"), reasoning={"effort":"minimal"}, input=[
+            {"role":"system", "content":"You produce strict JSON for a visual product-demo pipeline. Use screenshots as ground truth."}, {"role":"user", "content":content}])
+        return r.output_text
+
+    if provider == "ollama":
+        raw = call_ollama()
+    elif provider == "openai":
+        raw = call_openai()
+    else:
+        try:
+            if os.getenv("OPENAI_API_KEY"):
+                raw = call_openai()
+            else:
+                raise RuntimeError("OPENAI_API_KEY is not configured")
+        except Exception as openai_error:
+            print(f"OpenAI unavailable ({openai_error}); trying Ollama {os.getenv('OLLAMA_MODEL', 'gemma4')}...", file=sys.stderr)
+            raw = call_ollama()
+    raw = re.sub(r"^```json\s*|\s*```$", "", raw.strip(), flags=re.I)
     result = json.loads(raw)
     if not result.get("scenes"): raise ValueError("No scenes returned")
     allowed = {r["path"] for r in routes}
@@ -170,7 +207,9 @@ def record(url, plan, run, headed, screenshot_scale=0.78):
             document.head.appendChild(css);
         }''')
         for s in plan["scenes"]:
-            target = url.rstrip("/") + (s.get("path") or "/")
+            parsed_base = urlparse(url)
+            origin_url = f"{parsed_base.scheme}://{parsed_base.netloc}"
+            target = urljoin(origin_url + "/", (s.get("path") or "/").lstrip("/"))
             if page.url != target: page.goto(target, wait_until="networkidle", timeout=60000)
             had_previous_slide = page.evaluate('''() => {
                 const oldSlide = document.querySelector('#demo-slide');
@@ -266,13 +305,14 @@ def main():
     ap.add_argument("--screenshot-scale",type=float,default=0.78,help="Browser scale used to fit the complete website inside each product frame (default: 0.78)")
     ap.add_argument("--duration",type=int,default=None,help="Optional target duration; never truncates a complete story"); ap.add_argument("--model",choices=["turbo","nano"],default="turbo"); ap.add_argument("--voice",type=Path); ap.add_argument("--output",type=Path,default=Path("output/demo.mp4")); ap.add_argument("--headed",action="store_true"); args=ap.parse_args()
     if not args.url: raise SystemExit("Provide --url https://example.com or set DEMO_URL in .env")
+    same_page_only = os.getenv("CRAWL_SAME_PAGE_ONLY", "true").lower() in {"1", "true", "yes", "on"}
     if args.project and not args.project.exists(): raise SystemExit(f"Project not found: {args.project}")
     if args.music and not args.music.exists(): raise SystemExit(f"Music file not found: {args.music}")
     if not 0.4 <= args.screenshot_scale <= 1.0: raise SystemExit("--screenshot-scale must be between 0.4 and 1.0")
     if not shutil.which("ffmpeg"): raise SystemExit("ffmpeg is required on PATH")
     run=Path("output/run-"+time.strftime("%Y%m%d-%H%M%S")); run.mkdir(parents=True,exist_ok=True)
     print("Discovering routes and capturing screenshots...")
-    routes = discover_and_capture(args.url, run, args.headed)
+    routes = discover_and_capture(args.url, run, args.headed, same_page_only)
     if not routes: raise SystemExit("No same-origin application routes could be discovered")
     print(f"Discovered {len(routes)} routes: {', '.join(r['path'] for r in routes)}")
     print("Analyzing project and screenshots...")

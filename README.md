@@ -37,7 +37,7 @@ URL → route discovery → screenshots + visible text → scene plan → narrat
 - Python 3.11+
 - FFmpeg
 - Chromium installed through Playwright
-- An OpenAI API key for scene planning
+- An OpenAI API key or a local Ollama vision model for scene planning
 - A machine capable of running Chatterbox TTS; CPU works, while Apple Silicon/CUDA/MPS is recommended
 - A website reachable from the machine running Suryodev
 
@@ -61,6 +61,11 @@ Set credentials in `.env`:
 ```dotenv
 OPENAI_API_KEY=your-key-here
 OPENAI_MODEL=gpt-5-nano
+AI_PROVIDER=auto
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=gemma4
+OLLAMA_KEEP_ALIVE=5m
+CRAWL_SAME_PAGE_ONLY=true
 ```
 
 Keep API keys out of source control. The `.env` file should remain local.
@@ -80,6 +85,17 @@ python main.py --url https://example.com
 ```
 
 The result is written to `output/demo.mp4`. Intermediate route screenshots, the scene plan, narration WAVs, and raw screen video are retained under `output/run-*`.
+
+Set `CRAWL_SAME_PAGE_ONLY=true` to capture only the supplied URL. Set it to `false` to follow same-origin links and include additional routes. External domains are never crawled.
+
+### Local Ollama planning
+
+```bash
+AI_PROVIDER=ollama OLLAMA_MODEL=gemma4 python main.py --url http://localhost:3000
+```
+
+The default Ollama endpoint is `http://127.0.0.1:11434`; override it with `OLLAMA_BASE_URL` when needed.
+With `AI_PROVIDER=auto`, Suryodev uses OpenAI when `OPENAI_API_KEY` is available and automatically falls back to Ollama when it is missing or unavailable.
 
 ## Command reference
 
@@ -134,7 +150,7 @@ Only use voice references you own or have permission to use. Chatterbox may embe
 - **URL unavailable:** start the local server, verify the port, and check network access.
 - **Chromium missing:** run `playwright install chromium`.
 - **FFmpeg missing:** install it with `brew install ffmpeg` or your Linux package manager.
-- **Generic fallback narration:** check `OPENAI_API_KEY`, network access, and the model name.
+- **Generic fallback narration:** check the selected provider, API key or Ollama model, network access, and the model name.
 - **Screen clipped:** lower `--screenshot-scale`, such as `0.65`.
 
 ## Status
