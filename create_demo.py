@@ -44,7 +44,8 @@ def discover_and_capture(base_url, run, headed=False, same_page_only=True):
             if parsed.netloc != origin or route in seen or any(x in route for x in ["/_next", ".png", ".jpg", ".svg", ".css", ".js"]): continue
             seen.add(route)
             try:
-                page.goto(target, wait_until="networkidle", timeout=30000)
+                page.goto(target, wait_until="domcontentloaded", timeout=30000)
+                page.wait_for_timeout(1800)
                 shot = run / "screens" / ("root" if route == "/" else re.sub(r"[^a-zA-Z0-9_-]", "_", route.strip("/")))
                 shot = shot.with_suffix(".png"); shot.parent.mkdir(exist_ok=True)
                 page.screenshot(path=str(shot), full_page=True)
@@ -185,7 +186,8 @@ def record(url, plan, run, headed, screenshot_scale=0.78):
         ctx = browser.new_context(viewport={"width":1440,"height":900}, record_video_dir=str(vd), record_video_size={"width":1440,"height":900})
         page = ctx.new_page()
         navigation_started = time.monotonic()
-        page.goto(url, wait_until="networkidle", timeout=60000)
+        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(1800)
         initial_offset = max(0.0, time.monotonic() - navigation_started)
         page.evaluate('''() => {
             const style = getComputedStyle(document.body);
@@ -210,7 +212,9 @@ def record(url, plan, run, headed, screenshot_scale=0.78):
             parsed_base = urlparse(url)
             origin_url = f"{parsed_base.scheme}://{parsed_base.netloc}"
             target = urljoin(origin_url + "/", (s.get("path") or "/").lstrip("/"))
-            if page.url != target: page.goto(target, wait_until="networkidle", timeout=60000)
+            if page.url != target:
+                page.goto(target, wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(1800)
             had_previous_slide = page.evaluate('''() => {
                 const oldSlide = document.querySelector('#demo-slide');
                 if (oldSlide) {
