@@ -13,6 +13,12 @@ The input can be a local development server or a live website. A local source di
 
 Created by **Suhas Bhairav** · [suhasbhairav.com](https://suhasbhairav.com)
 
+## Demo
+
+<video src="./readme-ref/demo.mp4" controls muted playsinline width="100%">
+  Your browser does not support embedded video. [Download the demo](./readme-ref/demo.mp4).
+</video>
+
 ## Why Suryodev
 
 - Turns any reachable website into a product story.
