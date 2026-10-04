@@ -15,9 +15,11 @@ Created by **Suhas Bhairav** · [suhasbhairav.com](https://suhasbhairav.com)
 
 ## Demo
 
-<video src="./readme-ref/demo.mp4" controls muted playsinline width="100%">
-  Your browser does not support embedded video. [Download the demo](./readme-ref/demo.mp4).
+<video src="https://raw.githubusercontent.com/suhasbhairav/suryodev/master/readme-ref/demo.mp4" controls muted playsinline width="100%">
+  Your browser does not support embedded video. [Watch or download the demo](https://github.com/suhasbhairav/suryodev/raw/refs/heads/master/readme-ref/demo.mp4).
 </video>
+
+[▶ Watch or download the demo video](https://github.com/suhasbhairav/suryodev/raw/refs/heads/master/readme-ref/demo.mp4)
 
 ## Why Suryodev
 
