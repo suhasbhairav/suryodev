@@ -1,0 +1,6 @@
+openai>=1.99.0
+python-dotenv>=1.0.1
+playwright>=1.50.0
+chatterbox-tts>=0.1.1
+soundfile>=0.12.1
+numpy>=1.26.0

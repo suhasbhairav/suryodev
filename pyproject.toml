@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "suryodev"
+version = "0.1.0"
+description = "Turn any local or live website into a narrated product video."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Suhas Bhairav", email = "suhas@suhasbhairav.com" }]
+keywords = ["video", "product-demo", "screen-recording", "ai", "playwright", "text-to-speech"]
+requires-python = ">=3.11"
+dependencies = ["openai>=1.99.0", "python-dotenv>=1.0.1", "playwright>=1.50.0", "chatterbox-tts>=0.1.1", "soundfile>=0.12.1", "numpy>=1.26.0"]
+
+[tool.setuptools]
+py-modules = ["main", "create_demo"]

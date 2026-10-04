@@ -1,0 +1,47 @@
+# Byte-compiled Python / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Packaging and build output
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Generated demo output
+output/
+*.mp4
+*.webm
+*.wav
+*.m4a
+
+# Test, coverage, and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
